@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Block Coding App with Editable Input and Repeat Block</title>
+  <script src="https://gojs.net/latest/release/go.js"></script>
+</head>
+<body>
+  <!-- Div for the stage -->
+  <div id="stage" style="width: 100%; height: 100vh;"></div>
+
+  <!-- Div for the block diagram -->
+  <div id="blockDiagram" style="width: 100%; height: 500px;"></div>
+  <button onclick="runSelectedBlocks()">Run Selected Blocks</button>
+
+  <script>
+    var $ = go.GraphObject.make;
+
+    // Create a separate stage for the diagram
+    var stage =
+      $(go.Diagram, "stage",
+        {
+          "undoManager.isEnabled": true,
+          "draggingTool.isGridSnapEnabled": true // Enable snapping
+        });
+
+    // Define blocks with ports for the stage
+    stage.nodeTemplate =
+      $(go.Node, "Auto",
+        {
+          locationSpot: go.Spot.Center,
+          resizable: true,
+          resizeObjectName: "SHAPE",
+          toLinkable: true, // Allow links to be made from this node
+          fromLinkable: true // Allow links to be made to this node
+        },
+        new go.Binding("location", "loc", go.Point.parse).makeTwoWay(go.Point.stringify),
+        $(go.Shape, "RoundedRectangle",
+          { name: "SHAPE", fill: "lightblue", portId: "" }),
+        $(go.Panel, "Vertical",
+          { defaultAlignment: go.Spot.Left },
+          $(go.TextBlock, new go.Binding("text", "key")),
+          $(go.Panel, "Auto",
+            {
+              stretch: go.GraphObject.Horizontal,
+              alignment: go.Spot.Left,
+              margin: new go.Margin(0, 10, 0, 10)
+            },
+            $(go.TextBlock,
+              {
+                stroke: "black",
+                font: "bold 12px sans-serif",
+                isMultiline: false,
+                editable: true
+              },
+              new go.Binding("text", "inputValue").makeTwoWay()
+            )
+          ),
+          // Ring for the second input on the Repeat block
+          $(go.Panel, "Spot",
+            $(go.Shape, "Circle",
+              {
+                width: 15,
+                height: 15,
+                fill: null,
+                stroke: "black",
+                strokeWidth: 2,
+                toSpot: go.Spot.Left,
+                toLinkable: true, // Allow links to be made to the ring
+                cursor: "pointer"
+              }
+            ),
+            new go.Binding("itemArray", "repeatInputs"),
+            {
+              itemTemplate:
+                $(go.Panel, "Auto",
+                  {
+                    margin: new go.Margin(0, 0, 0, 10),
+                    toLinkable: true, // Allow links to be made to the block
+                    cursor: "pointer",
+                    fromLinkable: true, // Allow links to be made from the block
+                  },
+                  $(go.Shape, "RoundedRectangle",
+                    {
+                      fill: "lightgreen",
+                      portId: "",
+                      cursor: "pointer",
+                      fromLinkableDuplicates: true,
+                      toLinkableDuplicates: true
+                    }
+                  )
+                )
+            }
+          )
+        )
+      );
+
+    // Sample data for blocks with editable inputs and a Repeat block with a ring for the second input
+    var nodeDataArray = [
+      { key: "Move Forward", loc: "0 0", inputValue: "1" },
+      { key: "Turn Left", loc: "150 0", inputValue: "90" },
+      { key: "Turn Right", loc: "300 0", inputValue: "45" },
+      {
+        key: "Repeat",
+        loc: "0 150",
+        inputValue: "3",
+        repeatInputs: [{ portName: "Ring" }]
+      },
+      { key: "If Condition", loc: "150 150", inputValue: "true" },
+      // Add more blocks with editable inputs and Repeat block with a ring for the second input as needed
+    ];
+
+    // Load the sample data into the stage
+    stage.model = new go.Model({ nodeDataArray: nodeDataArray });
+
+    // Enable snapping for links
+    stage.toolManager.linkingTool.temporaryLink =
+      $(go.Link,
+        { layerName: "Tool" },
+        $(go.Shape, { stroke: "red", strokeWidth: 2 })
+      );
+    stage.toolManager.linkingTool.temporaryLink.routing = go.Link.Orthogonal;
+    stage.toolManager.linkingTool.temporaryLink.path = new go.Shape(); // Use a Shape instead of go.Path
+
+    // Enable reshaping for links
+    stage.toolManager.linkReshapingTool = new go.LinkReshapingTool();
+
+    // Enable snapping for reshaping links
+    stage.toolManager.linkReshapingTool.snapAngle = 90;
+    stage.toolManager.linkReshapingTool.isGridSnapEnabled = true;
+
+    // Define the Process class
+    class Process {
+      constructor() {
+        this.categories = {}; // Store blocks by category
+      }
+
+      addBlock(block) {
+        const category = block.category;
+        if (!this.categories[category]) {
+          this.categories[category] = [];
+        }
+        this.categories[category].push(block);
+      }
+
+      runBlocksInOrder(category) {
+        const blocks = this.categories[category];
+        if (blocks) {
+          blocks.forEach(block => this.runBlock(block));
+        }
+      }
+
+      runBlock(block) {
+        const methodName = block.key.replace(/\s+/g, ''); // Remove spaces from the key
+        if (this[methodName] && typeof this[methodName] === 'function') {
+          this[methodName](block);
+        }
+      }
+
+      // Methods for each block type
+      moveForward(block) {
+        console.log("Executing Move Forward with input:", block.inputValue);
+      }
+
+      turnLeft(block) {
+        console.log("Executing Turn Left with input:", block.inputValue);
+      }
+
+      turnRight(block) {
+        console.log("Executing Turn Right with input:", block.inputValue);
+      }
+
+      repeat(block) {
+        console.log("Executing Repeat ", block.inputValue, " times");
+        // Accessing the second input from the ring
+        const secondInputValue = block.repeatInputs[0].inputValue;
+        console.log("Second Input (Ring) Value:", secondInputValue);
+      }
+
+      ifCondition(block) {
+        console.log("Executing If Condition with input:", block.inputValue);
+      }
+
+      // Add more block methods as needed
+    }
+
+    // Create an instance of the Process class
+    const process = new Process();
+
+    // Function to run selected blocks in order
+    function runSelectedBlocks() {
+      // Get the selected nodes in the stage
+      const selectedNodes = stage.selection.iterator;
+      
+      // Clear existing categories in the process
+      process.categories = {};
+
+      // Populate the process with selected blocks
+      while (selectedNodes.next()) {
+        const node = selectedNodes.value;
+        process.addBlock(node.data);
+      }
+
+      // Run blocks in order for each category
+      for (const category in process.categories) {
+        process.runBlocksInOrder(category);
+      }
+    }
+  </script>
+</body>
+</html>
+
+
+
